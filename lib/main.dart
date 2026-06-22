@@ -34,10 +34,10 @@ class _ParticlesDemoState extends State<ParticlesDemo> {
   double _particleBaseSize = 100.0;
   bool _moveParticlesOnHover = true;
   double _particleHoverFactor = 1.0;
-  bool _alphaParticles = false;
+  bool _alphaParticles = true;
   double _sizeRandomness = 1.0;
   double _cameraDistance = 20.0;
-  bool _disableRotation = false;
+  bool _disableRotation = true;
   
   final List<Color> _particleColors = [Colors.white, Colors.white, Colors.white];
 
