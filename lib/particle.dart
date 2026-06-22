@@ -170,11 +170,11 @@ class ParticlesWidget extends StatefulWidget {
     this.particleColors = const [Colors.white],
     this.moveParticlesOnHover = false,
     this.particleHoverFactor = 1.0,
-    this.alphaParticles = false,
+    this.alphaParticles = true,
     this.particleBaseSize = 100.0,
     this.sizeRandomness = 1.0,
     this.cameraDistance = 20.0,
-    this.disableRotation = false,
+    this.disableRotation = true,
   });
 
   @override
