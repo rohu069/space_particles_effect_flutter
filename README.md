@@ -2,7 +2,7 @@
 
 A beautiful, interactive 3D particle system for Flutter, perfectly mimicking the mathematical rendering logic of popular WebGL particle effects. Built entirely with Flutter's native `CustomPainter`—no external shaders or complex GLSL required!
 
-[**View Live Demo**](https://rohu069.github.io/space_particles_effect)
+[**View Live Demo**](https://rohu069.github.io/space_particles_effect_flutter)
 
 ## ✨ Features
 - **True 3D Projection**: Simulates Z-depth, FOV, and perspective dynamically on the Canvas.
