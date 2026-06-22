@@ -24,7 +24,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Web
-        run: flutter build web --base-href "/space_particles_effect_flutter/"
+        run: flutter build web --base-href "/space_particles_effect/"
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
