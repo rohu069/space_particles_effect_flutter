@@ -1,85 +1,147 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+class Vector3 {
+  double x, y, z;
+  Vector3(this.x, this.y, this.z);
+}
+
+class Vector4 {
+  double x, y, z, w;
+  Vector4(this.x, this.y, this.z, this.w);
+}
+
 class Particle {
-  double baseX;
-  double baseY;
-  double x;
-  double y;
-  double vx;
-  double vy;
-  double size;
-  double baseSize;
+  Vector3 position;
+  Vector4 random;
   Color color;
-  double opacity;
-  double depth; // 0.0 (far) to 1.0 (close)
-  double parallaxFactor;
 
   Particle({
-    required this.baseX,
-    required this.baseY,
-    required this.vx,
-    required this.vy,
-    required this.baseSize,
+    required this.position,
+    required this.random,
     required this.color,
-    required this.depth,
-    this.opacity = 1.0,
-  })  : x = baseX,
-        y = baseY,
-        size = baseSize,
-        parallaxFactor = depth * 0.5; // How much this particle moves with mouse
+  });
 }
 
 class ParticlesPainter extends CustomPainter {
   final List<Particle> particles;
   final double time;
   final Offset mouseOffset;
+  final double particleSpread;
+  final double particleBaseSize;
+  final double sizeRandomness;
+  final bool alphaParticles;
+  final double cameraDistance;
+  final bool disableRotation;
 
   ParticlesPainter({
     required this.particles,
     required this.time,
     required this.mouseOffset,
+    required this.particleSpread,
+    required this.particleBaseSize,
+    required this.sizeRandomness,
+    required this.alphaParticles,
+    required this.cameraDistance,
+    required this.disableRotation,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Sort particles by depth (far to near) for proper rendering
-    particles.sort((a, b) => a.depth.compareTo(b.depth));
+    if (size.width == 0 || size.height == 0) return;
+
+    final double cx = size.width / 2;
+    final double cy = size.height / 2;
+
+    double rx = 0;
+    double ry = 0;
+    double rz = 0;
+
+    if (!disableRotation) {
+      rx = math.sin(time * 0.0002) * 0.1;
+      ry = math.cos(time * 0.0005) * 0.15;
+      rz = time * 0.01;
+    }
+
+    final double cxRx = math.cos(rx);
+    final double sxRx = math.sin(rx);
+    final double cyRy = math.cos(ry);
+    final double syRy = math.sin(ry);
+    final double czRz = math.cos(rz);
+    final double szRz = math.sin(rz);
+
+    final double fovFactor =
+        size.height / (math.tan(15.0 * math.pi / 360.0) * 2.0);
 
     for (final particle in particles) {
-      // Apply parallax effect based on mouse position and particle depth
-      final parallaxX = mouseOffset.dx * particle.parallaxFactor;
-      final parallaxY = mouseOffset.dy * particle.parallaxFactor;
+      double px = particle.position.x * particleSpread;
+      double py = particle.position.y * particleSpread;
+      double pz = particle.position.z * particleSpread * 10.0;
 
-      final finalX = particle.x + parallaxX;
-      final finalY = particle.y + parallaxY;
+      double x1 = px * czRz - py * szRz;
+      double y1 = px * szRz + py * czRz;
+      double z1 = pz;
 
-      // Adjust size and opacity based on depth for 3D effect
-      final depthSize = particle.size * (0.3 + particle.depth * 0.7);
-      final depthOpacity = particle.opacity * (0.2 + particle.depth * 0.8);
+      double x2 = x1 * cyRy + z1 * syRy;
+      double y2 = y1;
+      double z2 = -x1 * syRy + z1 * cyRy;
 
-      final paint = Paint()
-        ..color = particle.color.withOpacity(depthOpacity)
-        ..style = PaintingStyle.fill;
+      double x3 = x2;
+      double y3 = y2 * cxRx - z2 * sxRx;
+      double z3 = y2 * sxRx + z2 * cxRx;
 
-      // Add a subtle glow effect for closer particles
-      if (particle.depth > 0.7) {
-        final glowPaint = Paint()
-          ..color = particle.color.withOpacity(depthOpacity * 0.3)
+      double mixFactor(double r) => 0.1 + r * (1.5 - 0.1);
+
+      x3 += math.sin(time * 0.001 * particle.random.z + 6.28 * particle.random.w) *
+          mixFactor(particle.random.x);
+      y3 += math.sin(time * 0.001 * particle.random.y + 6.28 * particle.random.x) *
+          mixFactor(particle.random.w);
+      z3 += math.sin(time * 0.001 * particle.random.w + 6.28 * particle.random.y) *
+          mixFactor(particle.random.z);
+
+      x3 += mouseOffset.dx;
+      y3 += mouseOffset.dy;
+
+      double viewZ = z3 - cameraDistance;
+
+      if (viewZ >= 0) continue;
+
+      double distance = math.sqrt(x3 * x3 + y3 * y3 + viewZ * viewZ);
+
+      double projX = cx + (x3 / -viewZ) * fovFactor;
+      double projY = cy - (y3 / -viewZ) * fovFactor;
+
+      double pSize = (particleBaseSize *
+              (1.0 + sizeRandomness * (particle.random.x - 0.5))) /
+          distance;
+
+      if (pSize < 0.1) continue;
+
+      double shimmer =
+          0.2 * math.sin(time * 0.001 + particle.random.y * 6.28);
+      int r = (particle.color.red + (shimmer * 255).toInt()).clamp(0, 255);
+      int g = (particle.color.green + (shimmer * 255).toInt()).clamp(0, 255);
+      int b = (particle.color.blue + (shimmer * 255).toInt()).clamp(0, 255);
+
+      Color shimmerColor = Color.fromARGB(255, r, g, b);
+
+      if (alphaParticles) {
+        final paint = Paint()
+          ..shader = RadialGradient(
+            colors: [
+              shimmerColor.withValues(alpha: 0.8),
+              shimmerColor.withValues(alpha: 0.0),
+            ],
+            stops: const [0.0, 1.0],
+          ).createShader(
+              Rect.fromCircle(center: Offset(projX, projY), radius: pSize));
+        canvas.drawCircle(Offset(projX, projY), pSize, paint);
+      } else {
+        final paint = Paint()
+          ..color = shimmerColor
           ..style = PaintingStyle.fill;
-
-        canvas.drawCircle(
-          Offset(finalX, finalY),
-          depthSize * 2,
-          glowPaint,
-        );
+        canvas.drawCircle(Offset(projX, projY), pSize, paint);
       }
-
-      canvas.drawCircle(
-        Offset(finalX, finalY),
-        depthSize,
-        paint,
-      );
     }
   }
 
@@ -88,25 +150,31 @@ class ParticlesPainter extends CustomPainter {
 }
 
 class ParticlesWidget extends StatefulWidget {
-  final int count;
-  final double spread;
+  final int particleCount;
+  final double particleSpread;
   final double speed;
-  final double baseSize;
-  final Color color;
-  final double minOpacity;
-  final double maxOpacity;
-  final double parallaxStrength;
+  final List<Color> particleColors;
+  final bool moveParticlesOnHover;
+  final double particleHoverFactor;
+  final bool alphaParticles;
+  final double particleBaseSize;
+  final double sizeRandomness;
+  final double cameraDistance;
+  final bool disableRotation;
 
   const ParticlesWidget({
     super.key,
-    this.count = 200,
-    this.spread = 10,
+    this.particleCount = 200,
+    this.particleSpread = 10.0,
     this.speed = 0.1,
-    this.baseSize = 2,
-    this.color = Colors.white,
-    this.minOpacity = 0.3,
-    this.maxOpacity = 1.0,
-    this.parallaxStrength = 50.0,
+    this.particleColors = const [Colors.white],
+    this.moveParticlesOnHover = false,
+    this.particleHoverFactor = 1.0,
+    this.alphaParticles = false,
+    this.particleBaseSize = 100.0,
+    this.sizeRandomness = 1.0,
+    this.cameraDistance = 20.0,
+    this.disableRotation = false,
   });
 
   @override
@@ -120,6 +188,8 @@ class _ParticlesWidgetState extends State<ParticlesWidget>
   late Size _size;
   Offset _mousePosition = Offset.zero;
   Offset _smoothMouseOffset = Offset.zero;
+  double _elapsed = 0;
+  double _lastTime = 0;
 
   @override
   void initState() {
@@ -129,88 +199,60 @@ class _ParticlesWidgetState extends State<ParticlesWidget>
       vsync: this,
     )..repeat();
 
+    _animationController.addListener(() {
+      final t = _animationController.lastElapsedDuration?.inMilliseconds.toDouble() ?? 0.0;
+      final delta = t - _lastTime;
+      _lastTime = t;
+      _elapsed += delta * widget.speed;
+    });
+
     _size = Size.zero;
     particles = [];
   }
 
-  void _initializeParticles(Size size) {
-    if (size.width <= 0 || size.height <= 0) return;
-
-    _size = size;
+  void _initializeParticles() {
     final random = math.Random();
 
-    particles = List.generate(widget.count, (index) {
-      final depth = random.nextDouble();
-      final sizeVariation = 0.5 + depth * 1.5; // Closer particles are bigger
+    particles = List.generate(widget.particleCount, (index) {
+      double x, y, z, len;
+      do {
+        x = random.nextDouble() * 2 - 1;
+        y = random.nextDouble() * 2 - 1;
+        z = random.nextDouble() * 2 - 1;
+        len = x * x + y * y + z * z;
+      } while (len > 1 || len == 0);
+
+      final r = math.pow(random.nextDouble(), 1.0 / 3.0).toDouble();
+      final pos = Vector3(x * r, y * r, z * r);
+
+      final rands = Vector4(
+        random.nextDouble(),
+        random.nextDouble(),
+        random.nextDouble(),
+        random.nextDouble(),
+      );
+
+      final color = widget.particleColors[
+          (random.nextDouble() * widget.particleColors.length).floor()];
 
       return Particle(
-        baseX: random.nextDouble() * size.width,
-        baseY: random.nextDouble() * size.height,
-        vx: (random.nextDouble() - 0.5) *
-            widget.spread *
-            widget.speed *
-            (1 - depth * 0.5),
-        vy: (random.nextDouble() - 0.5) *
-            widget.spread *
-            widget.speed *
-            (1 - depth * 0.5),
-        baseSize: widget.baseSize * sizeVariation,
-        color: widget.color,
-        depth: depth,
-        opacity: widget.minOpacity +
-            random.nextDouble() * (widget.maxOpacity - widget.minOpacity),
+        position: pos,
+        random: rands,
+        color: color,
       );
     });
   }
 
-  void _updateParticles() {
+  void _updateMouse() {
     if (_size.width <= 0 || _size.height <= 0) return;
 
-    // Smooth mouse movement interpolation
-    const lerpFactor = 0.05;
-    final targetMouseOffset = Offset(
-      (_mousePosition.dx - _size.width / 2) /
-          _size.width *
-          widget.parallaxStrength,
-      (_mousePosition.dy - _size.height / 2) /
-          _size.height *
-          widget.parallaxStrength,
-    );
+    if (widget.moveParticlesOnHover) {
+      final double targetX = -((_mousePosition.dx / _size.width) * 2 - 1) * widget.particleHoverFactor;
+      final double targetY = ((_mousePosition.dy / _size.height) * 2 - 1) * widget.particleHoverFactor;
 
-    _smoothMouseOffset =
-        Offset.lerp(_smoothMouseOffset, targetMouseOffset, lerpFactor)!;
-
-    for (final particle in particles) {
-      // Update base position with slow drift
-      particle.baseX += particle.vx;
-      particle.baseY += particle.vy;
-
-      // Wrap around edges for base position
-      if (particle.baseX < -particle.size) {
-        particle.baseX = _size.width + particle.size;
-      } else if (particle.baseX > _size.width + particle.size) {
-        particle.baseX = -particle.size;
-      }
-
-      if (particle.baseY < -particle.size) {
-        particle.baseY = _size.height + particle.size;
-      } else if (particle.baseY > _size.height + particle.size) {
-        particle.baseY = -particle.size;
-      }
-
-      // Update actual position (base + parallax will be applied in painter)
-      particle.x = particle.baseX;
-      particle.y = particle.baseY;
-
-      // Subtle opacity animation based on depth and time
-      final timeOffset = particle.baseX * 0.01 + particle.baseY * 0.01;
-      particle.opacity = (widget.minOpacity +
-              (widget.maxOpacity - widget.minOpacity) *
-                  (0.5 +
-                      0.5 *
-                          math.sin(_animationController.value * 2 * math.pi +
-                              timeOffset))) *
-          (0.6 + particle.depth * 0.4); // Deeper particles are more visible
+      _smoothMouseOffset = Offset(targetX, targetY);
+    } else {
+      _smoothMouseOffset = Offset.zero;
     }
   }
 
@@ -220,19 +262,12 @@ class _ParticlesWidgetState extends State<ParticlesWidget>
     });
   }
 
-  void _onPointerExit(PointerEvent event) {
-    setState(() {
-      _mousePosition = Offset(_size.width / 2, _size.height / 2);
-    });
-  }
-
   @override
   void didUpdateWidget(ParticlesWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.count != widget.count ||
-        oldWidget.color != widget.color ||
-        oldWidget.baseSize != widget.baseSize) {
-      _initializeParticles(_size);
+    if (oldWidget.particleCount != widget.particleCount ||
+        oldWidget.particleColors != widget.particleColors) {
+      _initializeParticles();
     }
   }
 
@@ -249,27 +284,32 @@ class _ParticlesWidgetState extends State<ParticlesWidget>
         final size = Size(constraints.maxWidth, constraints.maxHeight);
 
         if (_size != size) {
+          _size = size;
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            _initializeParticles(size);
-            _mousePosition = Offset(size.width / 2, size.height / 2);
+            _initializeParticles();
           });
         }
 
         return MouseRegion(
           onHover: (event) => _onPointerMove(event),
-          onExit: _onPointerExit,
           child: Listener(
             onPointerMove: _onPointerMove,
             child: AnimatedBuilder(
               animation: _animationController,
               builder: (context, child) {
-                _updateParticles();
+                _updateMouse();
                 return CustomPaint(
                   size: size,
                   painter: ParticlesPainter(
                     particles: particles,
-                    time: _animationController.value,
+                    time: _elapsed,
                     mouseOffset: _smoothMouseOffset,
+                    particleSpread: widget.particleSpread,
+                    particleBaseSize: widget.particleBaseSize,
+                    sizeRandomness: widget.sizeRandomness,
+                    alphaParticles: widget.alphaParticles,
+                    cameraDistance: widget.cameraDistance,
+                    disableRotation: widget.disableRotation,
                   ),
                 );
               },
